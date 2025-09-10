@@ -22,12 +22,24 @@
 #define ID_BTN_EXECUTE      1016
 #define ID_BTN_SETTINGS     1017
 #define ID_BTN_QUIT         1018
+#define ID_BTN_ARROW_RIGHT  1019
+#define ID_BTN_ARROW_LEFT   1020
 
 // IDs pour la boîte de dialogue de copie
 #define ID_COPY_REPLACE     3001
 #define ID_COPY_SKIP        3002  
 #define ID_COPY_CANCEL      3003
 #define ID_COPY_APPLY_ALL   3004
+
+// IDs pour la boîte de dialogue de renommage
+#define ID_RENAME_EDIT      4001
+#define ID_RENAME_OK        4002
+#define ID_RENAME_CANCEL    4003
+
+// IDs pour la boîte de dialogue de création de répertoire
+#define ID_MAKEDIR_EDIT     4004
+#define ID_MAKEDIR_OK       4005
+#define ID_MAKEDIR_CANCEL   4006
 
 // Variables globales pour la gestion de conflits
 int g_copyChoice = 0; // 0=demander, 1=remplacer, 2=passer, 3=annuler
@@ -37,6 +49,14 @@ BOOL g_copyApplyAll = FALSE;
 char g_sourceInfo[512];
 char g_destInfo[512];
 
+// Variables pour le renommage
+char g_renameResult[MAX_PATH];
+BOOL g_renameConfirmed = FALSE;
+
+// Variables pour la création de répertoire
+char g_makedirResult[MAX_PATH];
+BOOL g_makedirConfirmed = FALSE;
+
 // Variables pour le sous-classement des listes
 WNDPROC g_oldListProcLeft = NULL;
 WNDPROC g_oldListProcRight = NULL;
@@ -45,6 +65,7 @@ int g_lastClickedItem = -1;
 // Variables globales
 HWND g_hListLeft, g_hListRight;
 HWND g_hMainWindow, g_hStatusLeft, g_hStatusRight;
+HWND g_hArrowRight, g_hArrowLeft; // Boutons flèches pour synchroniser les répertoires
 char g_szLeftPath[MAX_PATH] = "C:\\";
 char g_szRightPath[MAX_PATH] = "C:\\";
 int g_nActivePanel = 0; // 0=gauche, 1=droite
@@ -115,6 +136,7 @@ void ExecuteCommand(int cmdId);
 void ShowSettings();
 void LoadSettings();
 void SaveSettings();
+void FlashError(HWND hwnd); // Effet de clignotement pour signaler une erreur
 int ShowCenteredMessageBox(const char* text, const char* caption, UINT type);
 HWND CreateCenteredWindow(const char* className, const char* windowName, DWORD style, int width, int height, HWND parent, HINSTANCE hInstance);
 
@@ -160,6 +182,36 @@ int ShowCenteredMessageBox(const char* text, const char* caption, UINT type) {
     }
     
     return result;
+}
+
+// Fonction pour créer un effet de clignotement en cas d'erreur (style AmigaOS)
+void FlashError(HWND hwnd) {
+    if (!hwnd) return;
+    
+    // Sauvegarder les couleurs originales
+    COLORREF originalBg = GetSysColor(COLOR_WINDOW);
+    
+    // Faire clignoter 3 fois
+    for (int i = 0; i < 3; i++) {
+        // Inverser les couleurs (effet flash)
+        HDC hdc = GetDC(hwnd);
+        RECT rect;
+        GetClientRect(hwnd, &rect);
+        
+        // Flash rouge
+        HBRUSH hBrush = CreateSolidBrush(RGB(255, 100, 100));
+        FillRect(hdc, &rect, hBrush);
+        DeleteObject(hBrush);
+        ReleaseDC(hwnd, hdc);
+        
+        Sleep(80); // Court délai
+        
+        // Restaurer l'apparence normale
+        InvalidateRect(hwnd, NULL, TRUE);
+        UpdateWindow(hwnd);
+        
+        Sleep(80); // Court délai
+    }
 }
 
 // Fonction pour créer toutes les fenêtres centrées
@@ -354,6 +406,259 @@ BOOL GetRealFileName(const char* szPath, int index, char* szRealName) {
     return FALSE;
 }
 
+// Dialogue de renommage
+LRESULT CALLBACK RenameDialogProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
+    switch (uMsg) {
+        case WM_CREATE: {
+            // Titre
+            CreateWindowA("STATIC", "Nouveau nom :",
+                WS_CHILD | WS_VISIBLE | SS_LEFT,
+                10, 10, 280, 20, hwnd, NULL, NULL, NULL);
+            
+            // Zone de texte pour le nouveau nom
+            HWND hEdit = CreateWindowA("EDIT", g_renameResult,
+                WS_CHILD | WS_VISIBLE | WS_BORDER | ES_AUTOHSCROLL,
+                10, 35, 280, 25, hwnd, (HMENU)ID_RENAME_EDIT, NULL, NULL);
+            
+            // Boutons
+            CreateWindowA("BUTTON", "OK",
+                WS_CHILD | WS_VISIBLE | BS_DEFPUSHBUTTON,
+                70, 75, 60, 25, hwnd, (HMENU)ID_RENAME_OK, NULL, NULL);
+                
+            CreateWindowA("BUTTON", "Annuler",
+                WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
+                140, 75, 60, 25, hwnd, (HMENU)ID_RENAME_CANCEL, NULL, NULL);
+            
+            // Appliquer police UTF-8
+            if (g_hFontUTF8) {
+                SendMessageA(hEdit, WM_SETFONT, (WPARAM)g_hFontUTF8, TRUE);
+                for (int id = ID_RENAME_OK; id <= ID_RENAME_CANCEL; id++) {
+                    HWND hCtrl = GetDlgItem(hwnd, id);
+                    if (hCtrl) SendMessageA(hCtrl, WM_SETFONT, (WPARAM)g_hFontUTF8, TRUE);
+                }
+            }
+            
+            // Sélectionner tout le texte
+            SetFocus(hEdit);
+            SendMessageA(hEdit, EM_SETSEL, 0, -1);
+            break;
+        }
+        
+        case WM_COMMAND: {
+            int wmId = LOWORD(wParam);
+            int wmEvent = HIWORD(wParam);
+            
+            if (wmId == ID_RENAME_OK || wmId == IDOK) {
+                // Récupérer le nouveau nom
+                GetWindowTextA(GetDlgItem(hwnd, ID_RENAME_EDIT), g_renameResult, MAX_PATH);
+                g_renameConfirmed = TRUE;
+                DestroyWindow(hwnd);
+            } else if (wmId == ID_RENAME_CANCEL || wmId == IDCANCEL) {
+                g_renameConfirmed = FALSE;
+                DestroyWindow(hwnd);
+            } else if (wmId == ID_RENAME_EDIT && wmEvent == EN_CHANGE) {
+                // Zone de texte modifiée - pas d'action particulière
+            }
+            break;
+        }
+        
+        case WM_CLOSE:
+            g_renameConfirmed = FALSE;
+            DestroyWindow(hwnd);
+            break;
+    }
+    return DefWindowProcA(hwnd, uMsg, wParam, lParam);
+}
+
+// Procédure de fenêtre pour la création de répertoire
+LRESULT CALLBACK MakedirDialogProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
+    switch (uMsg) {
+        case WM_CREATE: {
+            // Titre
+            CreateWindowA("STATIC", "Nom du nouveau répertoire :",
+                WS_CHILD | WS_VISIBLE | SS_LEFT,
+                10, 10, 280, 20, hwnd, NULL, NULL, NULL);
+            
+            // Zone de texte pour le nom du répertoire
+            HWND hEdit = CreateWindowA("EDIT", g_makedirResult,
+                WS_CHILD | WS_VISIBLE | WS_BORDER | ES_AUTOHSCROLL,
+                10, 35, 280, 25, hwnd, (HMENU)ID_MAKEDIR_EDIT, NULL, NULL);
+            
+            // Boutons
+            CreateWindowA("BUTTON", "OK",
+                WS_CHILD | WS_VISIBLE | BS_DEFPUSHBUTTON,
+                70, 75, 60, 25, hwnd, (HMENU)ID_MAKEDIR_OK, NULL, NULL);
+                
+            CreateWindowA("BUTTON", "Annuler",
+                WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
+                140, 75, 60, 25, hwnd, (HMENU)ID_MAKEDIR_CANCEL, NULL, NULL);
+            
+            // Appliquer police UTF-8
+            if (g_hFontUTF8) {
+                SendMessageA(hEdit, WM_SETFONT, (WPARAM)g_hFontUTF8, TRUE);
+                for (int id = ID_MAKEDIR_OK; id <= ID_MAKEDIR_CANCEL; id++) {
+                    HWND hCtrl = GetDlgItem(hwnd, id);
+                    if (hCtrl) SendMessageA(hCtrl, WM_SETFONT, (WPARAM)g_hFontUTF8, TRUE);
+                }
+            }
+            
+            // Mettre le focus sur la zone de texte
+            SetFocus(hEdit);
+            break;
+        }
+        
+        case WM_COMMAND: {
+            int wmId = LOWORD(wParam);
+            int wmEvent = HIWORD(wParam);
+            
+            if (wmId == ID_MAKEDIR_OK || wmId == IDOK) {
+                // Récupérer le nom du répertoire
+                GetWindowTextA(GetDlgItem(hwnd, ID_MAKEDIR_EDIT), g_makedirResult, MAX_PATH);
+                g_makedirConfirmed = TRUE;
+                DestroyWindow(hwnd);
+            } else if (wmId == ID_MAKEDIR_CANCEL || wmId == IDCANCEL) {
+                g_makedirConfirmed = FALSE;
+                DestroyWindow(hwnd);
+            } else if (wmId == ID_MAKEDIR_EDIT && wmEvent == EN_CHANGE) {
+                // Zone de texte modifiée - pas d'action particulière
+            }
+            break;
+        }
+        
+        case WM_CLOSE:
+            g_makedirConfirmed = FALSE;
+            DestroyWindow(hwnd);
+            break;
+    }
+    return DefWindowProcA(hwnd, uMsg, wParam, lParam);
+}
+
+// Affiche la boîte de dialogue de renommage
+BOOL ShowRenameDialog(const char* currentName, char* newName) {
+    // Préparer le nom actuel
+    lstrcpyA(g_renameResult, currentName);
+    g_renameConfirmed = FALSE;
+    
+    // Créer et afficher la boîte de dialogue modale
+    WNDCLASSA wc = {0};
+    wc.lpfnWndProc = RenameDialogProc;
+    wc.hInstance = GetModuleHandleA(NULL);
+    wc.lpszClassName = "RenameDlg";
+    wc.hbrBackground = (HBRUSH)(COLOR_BTNFACE + 1);
+    
+    // Enregistrer la classe seulement si elle n'existe pas déjà
+    if (!GetClassInfoA(GetModuleHandleA(NULL), "RenameDlg", &wc)) {
+        RegisterClassA(&wc);
+    }
+    
+    HWND hDlg = CreateCenteredWindow("RenameDlg", "Renommer",
+        WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU, 320, 130, g_hMainWindow, GetModuleHandleA(NULL));
+    
+    // Rendre modal
+    EnableWindow(g_hMainWindow, FALSE);
+    ShowWindow(hDlg, SW_SHOW);
+    SetForegroundWindow(hDlg);
+    
+    // Boucle de messages pour la modalité
+    MSG msg;
+    while (IsWindow(hDlg)) {
+        if (GetMessageA(&msg, NULL, 0, 0)) {
+            if (msg.hwnd == hDlg || IsChild(hDlg, msg.hwnd)) {
+                // Utiliser IsDialogMessage pour gérer les touches comme TAB, RETURN, ESC
+                if (!IsDialogMessageA(hDlg, &msg)) {
+                    TranslateMessage(&msg);
+                    DispatchMessageA(&msg);
+                }
+            } else {
+                // Messages pour d'autres fenêtres - les ignorer pour maintenir la modalité
+                if (msg.message >= WM_KEYFIRST && msg.message <= WM_KEYLAST) {
+                    continue;
+                }
+                if (msg.message >= WM_MOUSEFIRST && msg.message <= WM_MOUSELAST) {
+                    continue;
+                }
+                TranslateMessage(&msg);
+                DispatchMessageA(&msg);
+            }
+        } else {
+            break;
+        }
+    }
+    
+    // Réactiver la fenêtre principale
+    EnableWindow(g_hMainWindow, TRUE);
+    SetForegroundWindow(g_hMainWindow);
+    
+    if (g_renameConfirmed) {
+        lstrcpyA(newName, g_renameResult);
+        return TRUE;
+    }
+    return FALSE;
+}
+
+// Affiche la boîte de dialogue de création de répertoire
+BOOL ShowMakedirDialog(char* dirName) {
+    // Initialiser le nom par défaut
+    lstrcpyA(g_makedirResult, "");
+    g_makedirConfirmed = FALSE;
+    
+    // Créer et afficher la boîte de dialogue modale
+    WNDCLASSA wc = {0};
+    wc.lpfnWndProc = MakedirDialogProc;
+    wc.hInstance = GetModuleHandleA(NULL);
+    wc.lpszClassName = "MakedirDlg";
+    wc.hbrBackground = (HBRUSH)(COLOR_BTNFACE + 1);
+    
+    // Enregistrer la classe seulement si elle n'existe pas déjà
+    if (!GetClassInfoA(GetModuleHandleA(NULL), "MakedirDlg", &wc)) {
+        RegisterClassA(&wc);
+    }
+    
+    HWND hDlg = CreateCenteredWindow("MakedirDlg", "Créer un répertoire",
+        WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU, 320, 130, g_hMainWindow, GetModuleHandleA(NULL));
+    
+    // Rendre modal
+    EnableWindow(g_hMainWindow, FALSE);
+    ShowWindow(hDlg, SW_SHOW);
+    SetForegroundWindow(hDlg);
+    
+    // Boucle de messages pour la modalité
+    MSG msg;
+    while (IsWindow(hDlg)) {
+        if (GetMessageA(&msg, NULL, 0, 0)) {
+            if (msg.hwnd == hDlg || IsChild(hDlg, msg.hwnd)) {
+                // Utiliser IsDialogMessage pour gérer les touches comme TAB, RETURN, ESC
+                if (!IsDialogMessageA(hDlg, &msg)) {
+                    TranslateMessage(&msg);
+                    DispatchMessageA(&msg);
+                }
+            } else {
+                // Messages pour d'autres fenêtres - les ignorer pour maintenir la modalité
+                if (msg.message >= WM_KEYFIRST && msg.message <= WM_KEYLAST) {
+                    continue;
+                }
+                if (msg.message >= WM_MOUSEFIRST && msg.message <= WM_MOUSELAST) {
+                    continue;
+                }
+                TranslateMessage(&msg);
+                DispatchMessageA(&msg);
+            }
+        } else {
+            break;
+        }
+    }
+    
+    // Réactiver la fenêtre principale
+    EnableWindow(g_hMainWindow, TRUE);
+    SetForegroundWindow(g_hMainWindow);
+    
+    if (g_makedirConfirmed) {
+        lstrcpyA(dirName, g_makedirResult);
+        return TRUE;
+    }
+    return FALSE;
+}
+
 // Dialogue de conflit pour la copie de fichiers
 LRESULT CALLBACK ConflictDialogProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
     switch (uMsg) {
@@ -415,6 +720,22 @@ LRESULT CALLBACK ConflictDialogProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM 
                 
                 // Fermer la boîte de dialogue
                 DestroyWindow(hwnd);
+            }
+            break;
+        }
+        
+        case WM_KEYDOWN: {
+            if (wParam == VK_RETURN) {
+                // RETURN = Remplacer
+                g_copyApplyAll = SendMessageA(GetDlgItem(hwnd, ID_COPY_APPLY_ALL), BM_GETCHECK, 0, 0);
+                g_copyChoice = 1; // Remplacer
+                DestroyWindow(hwnd);
+                return 0;
+            } else if (wParam == VK_ESCAPE) {
+                // ESC = Annuler tout
+                g_copyChoice = 3; // Annuler
+                DestroyWindow(hwnd);
+                return 0;
             }
             break;
         }
@@ -556,12 +877,6 @@ int ShowConflictDialog(const char* sourceFile, const char* destFile) {
     MSG msg;
     while (IsWindow(hDlg)) {
         if (GetMessageA(&msg, NULL, 0, 0)) {
-            if (msg.message == WM_KEYDOWN && msg.wParam == VK_ESCAPE) {
-                g_copyChoice = 3;
-                DestroyWindow(hDlg);
-                break;
-            }
-            
             if (msg.hwnd == hDlg || IsChild(hDlg, msg.hwnd)) {
                 TranslateMessage(&msg);
                 DispatchMessageA(&msg);
@@ -814,6 +1129,19 @@ LRESULT CALLBACK SettingsProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam
             break;
         }
         
+        case WM_KEYDOWN: {
+            if (wParam == VK_RETURN) {
+                // RETURN = OK (même traitement que le bouton OK)
+                SendMessageA(hwnd, WM_COMMAND, IDOK, 0);
+                return 0;
+            } else if (wParam == VK_ESCAPE) {
+                // ESC = Annuler (même traitement que le bouton Annuler)
+                SendMessageA(hwnd, WM_COMMAND, IDCANCEL, 0);
+                return 0;
+            }
+            break;
+        }
+        
         case WM_CLOSE:
             // Réactiver la fenêtre principale et fermer
             EnableWindow(g_hMainWindow, TRUE);
@@ -899,6 +1227,13 @@ void ExecuteCommand(int cmdId) {
             char* szSourcePath = (g_nActivePanel == 0) ? g_szLeftPath : g_szRightPath;
             char* szDestPath = (g_nActivePanel == 0) ? g_szRightPath : g_szLeftPath;
             
+            // Vérifier que le panneau de destination n'affiche pas les lecteurs
+            if (strlen(szDestPath) == 0) {
+                HWND hDestList = (g_nActivePanel == 0) ? g_hListRight : g_hListLeft;
+                FlashError(hDestList);
+                break;
+            }
+            
             int count = SendMessageA(hSourceList, LB_GETCOUNT, 0, 0);
             int copiedFiles = 0;
             int skippedFiles = 0;
@@ -963,58 +1298,331 @@ void ExecuteCommand(int cmdId) {
                 }
             }
             
-            // Afficher le résultat
+            // Rafraîchir le panneau de destination si l'opération n'a pas été annulée
             if (!operationCancelled) {
-                char szMsg[200];
-                if (skippedFiles > 0) {
-                    wsprintfA(szMsg, "%d fichier(s) copié(s), %d passé(s)", copiedFiles, skippedFiles);
-                } else {
-                    wsprintfA(szMsg, "%d fichier(s) copié(s)", copiedFiles);
-                }
-                ShowCenteredMessageBox(szMsg, "Copie", MB_OK | MB_ICONINFORMATION);
-                
-                // Rafraîchir le panneau de destination
                 HWND hDestList = (g_nActivePanel == 0) ? g_hListRight : g_hListLeft;
                 RefreshPanel(hDestList, szDestPath);
-            } else {
-                ShowCenteredMessageBox("Opération de copie annulée", "Copie", MB_OK | MB_ICONINFORMATION);
             }
             break;
         }
         
         case ID_BTN_MOVE: {
-            int sel = SendMessageA(hActiveList, LB_GETCURSEL, 0, 0);
-            if (sel != LB_ERR) {
-                ShowCenteredMessageBox("Fonction Move à implémenter", "Info", MB_OK);
+            // Déplacer les fichiers sélectionnés vers l'autre panneau
+            HWND hSourceList = (g_nActivePanel == 0) ? g_hListLeft : g_hListRight;
+            char* szSourcePath = (g_nActivePanel == 0) ? g_szLeftPath : g_szRightPath;
+            char* szDestPath = (g_nActivePanel == 0) ? g_szRightPath : g_szLeftPath;
+            
+            // Vérifier que le panneau de destination n'affiche pas les lecteurs
+            if (strlen(szDestPath) == 0) {
+                HWND hDestList = (g_nActivePanel == 0) ? g_hListRight : g_hListLeft;
+                FlashError(hDestList);
+                break;
+            }
+            
+            int count = SendMessageA(hSourceList, LB_GETCOUNT, 0, 0);
+            int movedFiles = 0;
+            int skippedFiles = 0;
+            BOOL operationCancelled = FALSE;
+            
+            // Réinitialiser les choix de conflit
+            g_copyChoice = 0;
+            g_copyApplyAll = FALSE;
+            
+            for (int i = 0; i < count && !operationCancelled; i++) {
+                int isSelected = SendMessageA(hSourceList, LB_GETSEL, i, 0);
+                if (isSelected) {
+                    // Récupérer le nom réel du fichier (pas l'affichage tronqué)
+                    char szRealFileName[MAX_PATH];
+                    if (!GetRealFileName(szSourcePath, i, szRealFileName)) {
+                        continue; // Erreur lors de la récupération du nom
+                    }
+                    
+                    // Ignorer le dossier parent ".."
+                    if (lstrcmpA(szRealFileName, "..") == 0) continue;
+                    
+                    // Construire les chemins complets
+                    char szSourceFile[MAX_PATH];
+                    char szDestFile[MAX_PATH];
+                    wsprintfA(szSourceFile, "%s%s", szSourcePath, szRealFileName);
+                    wsprintfA(szDestFile, "%s%s", szDestPath, szRealFileName);
+                    
+                    // Vérifier si c'est un dossier
+                    DWORD attrs = GetFileAttributesA(szSourceFile);
+                    if (attrs != INVALID_FILE_ATTRIBUTES && (attrs & FILE_ATTRIBUTE_DIRECTORY)) {
+                        // Ignorer les dossiers pour cette version simplifiée
+                        continue;
+                    }
+                    
+                    // Vérifier si le fichier de destination existe
+                    BOOL fileExists = (GetFileAttributesA(szDestFile) != INVALID_FILE_ATTRIBUTES);
+                    BOOL shouldMove = TRUE;
+                    
+                    if (fileExists) {
+                        int choice = ShowConflictDialog(szSourceFile, szDestFile);
+                        switch (choice) {
+                            case 1: // Remplacer
+                                shouldMove = TRUE;
+                                break;
+                            case 2: // Passer
+                                shouldMove = FALSE;
+                                skippedFiles++;
+                                break;
+                            case 3: // Annuler tout
+                                operationCancelled = TRUE;
+                                shouldMove = FALSE;
+                                break;
+                        }
+                    }
+                    
+                    // Déplacer le fichier si nécessaire
+                    if (shouldMove && !operationCancelled) {
+                        // Copier le fichier d'abord
+                        if (CopyFileA(szSourceFile, szDestFile, FALSE)) {
+                            // Si la copie a réussi, supprimer le fichier source
+                            if (DeleteFileA(szSourceFile)) {
+                                movedFiles++;
+                            } else {
+                                // Si la suppression échoue, supprimer le fichier de destination pour éviter les doublons
+                                DeleteFileA(szDestFile);
+                            }
+                        }
+                    }
+                }
+            }
+            
+            // Rafraîchir les panneaux si l'opération n'a pas été annulée
+            if (!operationCancelled) {
+                // Rafraîchir les deux panneaux car les fichiers ont été supprimés du source
+                RefreshPanel(hSourceList, szSourcePath);
+                HWND hDestList = (g_nActivePanel == 0) ? g_hListRight : g_hListLeft;
+                RefreshPanel(hDestList, szDestPath);
             }
             break;
         }
         
         case ID_BTN_DELETE: {
-            int sel = SendMessageA(hActiveList, LB_GETCURSEL, 0, 0);
-            if (sel != LB_ERR) {
-                char szItem[300];
-                SendMessageA(hActiveList, LB_GETTEXT, sel, (LPARAM)szItem);
-                char szMsg[400];
-                wsprintfA(szMsg, "Supprimer '%s' ?", szItem);
-                
-                if (ShowCenteredMessageBox(szMsg, "Confirmer suppression", MB_YESNO) == IDYES) {
-                    ShowCenteredMessageBox("Fonction Delete à implémenter", "Info", MB_OK);
+            // Supprimer les fichiers sélectionnés
+            HWND hSourceList = (g_nActivePanel == 0) ? g_hListLeft : g_hListRight;
+            char* szSourcePath = (g_nActivePanel == 0) ? g_szLeftPath : g_szRightPath;
+            
+            // Vérifier que le panneau actif n'affiche pas les lecteurs
+            if (strlen(szSourcePath) == 0) {
+                FlashError(hSourceList);
+                break;
+            }
+            
+            int count = SendMessageA(hSourceList, LB_GETCOUNT, 0, 0);
+            int selectedCount = 0;
+            
+            // Compter les fichiers sélectionnés
+            for (int i = 0; i < count; i++) {
+                if (SendMessageA(hSourceList, LB_GETSEL, i, 0)) {
+                    selectedCount++;
                 }
+            }
+            
+            if (selectedCount == 0) {
+                ShowCenteredMessageBox("Aucun fichier sélectionné", "Suppression", MB_OK | MB_ICONWARNING);
+                break;
+            }
+            
+            // Demander confirmation
+            char szMsg[200];
+            if (selectedCount == 1) {
+                wsprintfA(szMsg, "Supprimer le fichier sélectionné ?");
+            } else {
+                wsprintfA(szMsg, "Supprimer les %d fichiers sélectionnés ?", selectedCount);
+            }
+            
+            if (ShowCenteredMessageBox(szMsg, "Confirmer suppression", MB_YESNO | MB_ICONQUESTION) == IDYES) {
+                int deletedFiles = 0;
+                int errorCount = 0;
+                
+                for (int i = 0; i < count; i++) {
+                    int isSelected = SendMessageA(hSourceList, LB_GETSEL, i, 0);
+                    if (isSelected) {
+                        // Récupérer le nom réel du fichier
+                        char szRealFileName[MAX_PATH];
+                        if (!GetRealFileName(szSourcePath, i, szRealFileName)) {
+                            errorCount++;
+                            continue;
+                        }
+                        
+                        // Ignorer le dossier parent ".."
+                        if (lstrcmpA(szRealFileName, "..") == 0) continue;
+                        
+                        // Construire le chemin complet
+                        char szFullPath[MAX_PATH];
+                        wsprintfA(szFullPath, "%s%s", szSourcePath, szRealFileName);
+                        
+                        // Vérifier si c'est un dossier
+                        DWORD attrs = GetFileAttributesA(szFullPath);
+                        if (attrs != INVALID_FILE_ATTRIBUTES && (attrs & FILE_ATTRIBUTE_DIRECTORY)) {
+                            // Tenter de supprimer le dossier (seulement s'il est vide)
+                            if (RemoveDirectoryA(szFullPath)) {
+                                deletedFiles++;
+                            } else {
+                                errorCount++;
+                            }
+                        } else {
+                            // Supprimer le fichier
+                            if (DeleteFileA(szFullPath)) {
+                                deletedFiles++;
+                            } else {
+                                errorCount++;
+                            }
+                        }
+                    }
+                }
+                
+                // Rafraîchir le panneau
+                RefreshPanel(hSourceList, szSourcePath);
             }
             break;
         }
         
         case ID_BTN_RENAME: {
-            int sel = SendMessageA(hActiveList, LB_GETCURSEL, 0, 0);
-            if (sel != LB_ERR) {
-                ShowCenteredMessageBox("Fonction Rename à implémenter", "Info", MB_OK);
+            // Renommer les fichiers sélectionnés un par un
+            HWND hSourceList = (g_nActivePanel == 0) ? g_hListLeft : g_hListRight;
+            char* szSourcePath = (g_nActivePanel == 0) ? g_szLeftPath : g_szRightPath;
+            
+            // Vérifier que le panneau actif n'affiche pas les lecteurs
+            if (strlen(szSourcePath) == 0) {
+                FlashError(hSourceList);
+                break;
             }
+            
+            int count = SendMessageA(hSourceList, LB_GETCOUNT, 0, 0);
+            int selectedCount = 0;
+            
+            // Compter les fichiers sélectionnés
+            for (int i = 0; i < count; i++) {
+                if (SendMessageA(hSourceList, LB_GETSEL, i, 0)) {
+                    selectedCount++;
+                }
+            }
+            
+            if (selectedCount == 0) {
+                ShowCenteredMessageBox("Aucun fichier sélectionné", "Renommer", MB_OK | MB_ICONWARNING);
+                break;
+            }
+            
+            int renamedFiles = 0;
+            int skippedFiles = 0;
+            BOOL operationCancelled = FALSE;
+            
+            // Traiter chaque fichier sélectionné
+            for (int i = 0; i < count && !operationCancelled; i++) {
+                if (SendMessageA(hSourceList, LB_GETSEL, i, 0)) {
+                    // Récupérer le nom réel du fichier
+                    char szRealFileName[MAX_PATH];
+                    if (!GetRealFileName(szSourcePath, i, szRealFileName)) {
+                        skippedFiles++;
+                        continue;
+                    }
+                    
+                    // Ignorer le dossier parent ".."
+                    if (lstrcmpA(szRealFileName, "..") == 0) {
+                        skippedFiles++;
+                        continue;
+                    }
+                    
+                    // Demander le nouveau nom
+                    char szNewName[MAX_PATH];
+                    if (ShowRenameDialog(szRealFileName, szNewName)) {
+                        // Vérifier que le nouveau nom n'est pas vide
+                        if (lstrlenA(szNewName) == 0) {
+                            skippedFiles++;
+                            continue;
+                        }
+                        
+                        // Vérifier que le nom a changé
+                        if (lstrcmpA(szRealFileName, szNewName) == 0) {
+                            skippedFiles++;
+                            continue;
+                        }
+                        
+                        // Construire les chemins complets
+                        char szOldPath[MAX_PATH];
+                        char szNewPath[MAX_PATH];
+                        wsprintfA(szOldPath, "%s%s", szSourcePath, szRealFileName);
+                        wsprintfA(szNewPath, "%s%s", szSourcePath, szNewName);
+                        
+                        // Vérifier que le fichier destination n'existe pas déjà
+                        if (GetFileAttributesA(szNewPath) != INVALID_FILE_ATTRIBUTES) {
+                            char szMsg[400];
+                            wsprintfA(szMsg, "Un fichier avec le nom '%s' existe déjà", szNewName);
+                            ShowCenteredMessageBox(szMsg, "Renommer", MB_OK | MB_ICONWARNING);
+                            skippedFiles++;
+                            continue;
+                        }
+                        
+                        // Renommer le fichier
+                        if (MoveFileA(szOldPath, szNewPath)) {
+                            renamedFiles++;
+                        } else {
+                            char szMsg[400];
+                            wsprintfA(szMsg, "Erreur lors du renommage de '%s'", szRealFileName);
+                            ShowCenteredMessageBox(szMsg, "Renommer", MB_OK | MB_ICONERROR);
+                            skippedFiles++;
+                        }
+                    } else {
+                        // L'utilisateur a annulé pour ce fichier
+                        skippedFiles++;
+                    }
+                    
+                    // Rafraîchir le panneau après chaque renommage pour voir les changements
+                    if (renamedFiles > 0) {
+                        RefreshPanel(hSourceList, szSourcePath);
+                    }
+                }
+            }
+            
+            // Rafraîchir le panneau une dernière fois si nécessaire
+            if (renamedFiles > 0) {
+                RefreshPanel(hSourceList, szSourcePath);
+            }
+            
             break;
         }
         
         case ID_BTN_MAKEDIR: {
-            ShowCenteredMessageBox("Fonction Makedir à implémenter", "Info", MB_OK);
+            // Créer un nouveau répertoire dans le panneau actif
+            char* szCurrentPath = (g_nActivePanel == 0) ? g_szLeftPath : g_szRightPath;
+            HWND hActiveList = (g_nActivePanel == 0) ? g_hListLeft : g_hListRight;
+            
+            // Vérifier que le panneau actif n'affiche pas les lecteurs
+            if (strlen(szCurrentPath) == 0) {
+                FlashError(hActiveList);
+                break;
+            }
+            
+            char szDirName[MAX_PATH];
+            if (ShowMakedirDialog(szDirName)) {
+                // Vérifier que le nom n'est pas vide
+                if (strlen(szDirName) == 0) {
+                    ShowCenteredMessageBox("Le nom du répertoire ne peut pas être vide", "Erreur", MB_OK | MB_ICONERROR);
+                    break;
+                }
+                
+                // Construire le chemin complet
+                char szFullPath[MAX_PATH];
+                wsprintfA(szFullPath, "%s%s", szCurrentPath, szDirName);
+                
+                // Vérifier si le répertoire existe déjà
+                if (GetFileAttributesA(szFullPath) != INVALID_FILE_ATTRIBUTES) {
+                    ShowCenteredMessageBox("Un fichier ou répertoire avec ce nom existe déjà", "Erreur", MB_OK | MB_ICONERROR);
+                    break;
+                }
+                
+                // Créer le répertoire
+                if (CreateDirectoryA(szFullPath, NULL)) {
+                    // Rafraîchir le panneau actif pour afficher le nouveau répertoire
+                    RefreshPanel(hActiveList, szCurrentPath);
+                } else {
+                    ShowCenteredMessageBox("Impossible de créer le répertoire", "Erreur", MB_OK | MB_ICONERROR);
+                }
+            }
             break;
         }
         
@@ -1081,6 +1689,28 @@ void ExecuteCommand(int cmdId) {
             ShowSettings();
             break;
             
+        case ID_BTN_ARROW_RIGHT:
+            // Synchroniser le répertoire du panneau gauche vers le panneau droit
+            lstrcpyA(g_szRightPath, g_szLeftPath);
+            if (strlen(g_szLeftPath) == 0) {
+                // Si le panneau gauche affiche les lecteurs, afficher les lecteurs à droite aussi
+                ListDrives(g_hListRight);
+            } else {
+                RefreshPanel(g_hListRight, g_szRightPath);
+            }
+            break;
+            
+        case ID_BTN_ARROW_LEFT:
+            // Synchroniser le répertoire du panneau droit vers le panneau gauche
+            lstrcpyA(g_szLeftPath, g_szRightPath);
+            if (strlen(g_szRightPath) == 0) {
+                // Si le panneau droit affiche les lecteurs, afficher les lecteurs à gauche aussi
+                ListDrives(g_hListLeft);
+            } else {
+                RefreshPanel(g_hListLeft, g_szLeftPath);
+            }
+            break;
+            
         case ID_BTN_QUIT:
             // Quitter directement sans confirmation
             PostQuitMessage(0);
@@ -1099,6 +1729,15 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
             g_hStatusRight = CreateWindowA("STATIC", g_szRightPath,
                 WS_CHILD | WS_VISIBLE | SS_LEFT | WS_BORDER,
                 455, 500, 335, 20, hwnd, NULL, NULL, NULL);
+            
+            // Boutons flèches pour synchroniser les répertoires
+            g_hArrowRight = CreateWindowA("BUTTON", ">",
+                WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
+                350, 500, 20, 20, hwnd, (HMENU)ID_BTN_ARROW_RIGHT, NULL, NULL);
+                
+            g_hArrowLeft = CreateWindowA("BUTTON", "<",
+                WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
+                430, 500, 20, 20, hwnd, (HMENU)ID_BTN_ARROW_LEFT, NULL, NULL);
             
             // Panneau gauche (marges de 10px)
             g_hListLeft = CreateWindowA("LISTBOX", NULL,
@@ -1154,6 +1793,10 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
                 // Police UTF-8 pour les barres de statut
                 SendMessageA(g_hStatusLeft, WM_SETFONT, (WPARAM)g_hFontUTF8, TRUE);
                 SendMessageA(g_hStatusRight, WM_SETFONT, (WPARAM)g_hFontUTF8, TRUE);
+                
+                // Police UTF-8 pour les boutons flèches
+                SendMessageA(g_hArrowRight, WM_SETFONT, (WPARAM)g_hFontUTF8, TRUE);
+                SendMessageA(g_hArrowLeft, WM_SETFONT, (WPARAM)g_hFontUTF8, TRUE);
             }
             
             // Installer le sous-classement pour la sélection Windows-style

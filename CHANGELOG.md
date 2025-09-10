@@ -1,18 +1,12 @@
 # FileMaster 1.0 - bugs et améliorations
 
-# Contexte:
-# l'IA ne doit pas modifier ce fichier
-# l'IA doit répondre de manière très concise (juste "OK" si la demande est réalisée par exemple)
-# l'IA doit relancer le script de compilation pour refaire un exécutable et le lancer automatiquement en fin de modification.
-
-
 x1. quand une fenêtre s'ouvre sur l'applciation (uibox, msgbox, toutes les input box, etc), elle doit être centrée sur la position l'application. ceci est valable pour toutes les fenetres de l'application, y compris les fenêtres de confirmation quand on quitte l'applciation
 
 x2. Appuyer sur le bouton "Quit" et l'appui sur la croix pour fermer l'application quitte l'application, pas de confirmation.
 
 x3. sur les panneaux de droite et gauche, les fichiers sont énumérés et la taille des fichiers (ou l'annotation "DIR") ne sont pas alignés à droite. Cela peut provenir de la sélection de la police de caractère. on peut utiliser une police monospaced
 
-4. la fenêtre de "settings" a 2 choix Ok et Annuler. Il faut centrer les boutons dans la fenêtre en bas. ensuite il faut appliquer les choix si on appuie sur OK. Annuler ferme la fenetre de settings.
+x4. la fenêtre de "settings" a 2 choix Ok et Annuler. Il faut centrer les boutons dans la fenêtre en bas. ensuite il faut appliquer les choix si on appuie sur OK. Annuler ferme la fenetre de settings.
 
 x5. Il faut utiliser une police de caractère qui gère les accents (par ex sur la barre de titre des settings ou dans la fenêtre des settings, il y a des caractères avec accents mal affichés)
 
@@ -20,7 +14,7 @@ x6. le fond de la fenêtre de répertoire actif est RGB 102-136-187, le fond de 
 
 x7. La commande "Ce PC" doit être renommée en "Home". Cette fonction liste les différents disques de l'ordinateur sur la fenêtre active. La commande actuelle feme l'application au lieu de lister les lecteurs.
 
-8. Bug: les actions de la fenetre settings ne sont pas appliquées quand on clique sur OK et Annuler: Il faut enregistrer les options dans FileMaster.prefs quand OK est pressé, appliquer les paramètres et fermer la fenêtre de settings. Quand on clique sur Annuler, il suffit de fermer la fenêtre de settings sans changer les paramètres.
+x8. Bug: les actions de la fenetre settings ne sont pas appliquées quand on clique sur OK et Annuler: Il faut enregistrer les options dans FileMaster.prefs quand OK est pressé, appliquer les paramètres et fermer la fenêtre de settings. Quand on clique sur Annuler, il suffit de fermer la fenêtre de settings sans changer les paramètres.
 
 x9. Lorsque la fenetre de settings est ouverte, on peut encore interagir avec la fenetre principale de l'application derriere la fenetre de settings. J'aimerais qu'on ne puisse plus interagir sur quoi que ce soit (à part les settings) jusqu'à ce que la fenetre de settings soit fermée.
 
@@ -43,4 +37,20 @@ x17. quand on sélectionne des fichiers troncaturés  pour l'affichage avec "...
 x18. on va changer le mode de sélection des fichiers: comme sous windows de base (quand on clique sur un fichier cela supprime la sélection en cours et sélectionne le fichier sous la souris. pour sélectionner plusieurs fichier, il faut maintenir CRTL et cliquer; pour une range sélection, il faut cliquer sur un chichier et avec SHIFT d'appuyé, il faut cliquer sur le dernier fichier à sélectionner, tout ce qui est entre est sélectionné)
 
 x19. en cas de conflit dans la fonction "copy", il faut afficher les détails des deux fichiers sur 2 lignes dans la fenetre de dialogue: source: le nom, la taille, la date
-destination: le nom, la taille, la date. 
+destination: le nom, la taille, la date.
+
+x20. fonctionnement de la commande "move": identique à la fonction "copy" mais en plus, cela efface le fichier d'origine si il a été copié vers la destination (sinon, il faut le garder)
+
+x21. fonctionnement de la commande "delete": supprime les fichiers sélectionnés
+
+x22. fonctionnement de la commande "rename": renomme un fichier.
+
+x23. amélioration UX: suppression de toutes les fenêtres de résumé après les actions copy, move et delete pour fluidifier l'utilisation
+
+x24. fonctionnement de la commande "makedir": crée un répertoire dans la fenetre active
+
+x25. Amélioration: à droite de la barre de status du panneau de gauche et à gauche de la barre de status du panneau de droite tu peux mettre un bouton avec une fléche qui va en direction de l'autre panneau. Si on clique sur la petite flèche, le répertoire en cours du panneau où la fleche est cliqué devient le répertoire en cours de l'autre panneau
+
+26. fonctionnement de la commande "Show ASC": affiche le premier fichier sélectionné dans un viewer fait maison. cela affiche les caractères en ASCII du fichier dans une fenêtre qui s'ouvre avec exactement la même taille que l'interface de l'application.
+
+27. fonctionnement de la commande "Show HEX": affiche le premier fichier sélectionné dans un viewer fait maison. cela affiche les caractères en HEX sur 4 colonnes de 4 chiffres en HEX (FFFFFFFF), la cinquième colonne affiche en ASCII les 16 caractères ASCII des 4 premières colonnes.
