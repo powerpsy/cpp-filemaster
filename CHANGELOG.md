@@ -51,6 +51,12 @@ x24. fonctionnement de la commande "makedir": crée un répertoire dans la fenet
 
 x25. Amélioration: à droite de la barre de status du panneau de gauche et à gauche de la barre de status du panneau de droite tu peux mettre un bouton avec une fléche qui va en direction de l'autre panneau. Si on clique sur la petite flèche, le répertoire en cours du panneau où la fleche est cliqué devient le répertoire en cours de l'autre panneau
 
-26. fonctionnement de la commande "Show ASC": affiche le premier fichier sélectionné dans un viewer fait maison. cela affiche les caractères en ASCII du fichier dans une fenêtre qui s'ouvre avec exactement la même taille que l'interface de l'application.
+x26. fonctionnement de la commande "Show ASC": affiche le premier fichier sélectionné dans un viewer fait maison. cela affiche les caractères en ASCII du fichier dans une fenêtre qui s'ouvre avec exactement la même taille que l'interface de l'application.
 
-27. fonctionnement de la commande "Show HEX": affiche le premier fichier sélectionné dans un viewer fait maison. cela affiche les caractères en HEX sur 4 colonnes de 4 chiffres en HEX (FFFFFFFF), la cinquième colonne affiche en ASCII les 16 caractères ASCII des 4 premières colonnes.
+x27. fonctionnement de la commande "Show HEX": affiche le premier fichier sélectionné dans un viewer fait maison. cela affiche les caractères en HEX sur 4 colonnes de 4 chiffres en HEX (FFFFFFFF), la cinquième colonne affiche en ASCII les 16 caractères ASCII des 4 premières colonnes.
+
+x28. fonctionnement des commandes "Edit" et "Edit HEX". cela fait la même chose que les actions "show" mais l'utilisateur peut modifier le fichier et il y a un bouton enregistrer sur la fenetre. Si la fenêtre est fermée avec modification, il y a une popup qui propose de sauvegarder cae il y a des changements.
+
+29. Il faut mettre en place la sauvegarde du fichier de l'action "Edit ASC" et "Edit HEX" s'il y a une modification.
+
+30. 
