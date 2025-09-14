@@ -1,7 +1,7 @@
-# FileMaster 1.0 - Clone Total Commander Ultra-Léger
+# FileMaster - Gestionnaire de Fichiers Modulaire
 
-Clone de Total Commander / File Commander en C ultra-optimisé pour Windows.  
-Exécutable de **11KB** avec interface graphique complète et système de préférences.
+Clone de Total Commander / File Commander en C avec architecture modulaire optimisée pour Windows.  
+Exécutable de **48KB** avec interface graphique complète et organisation modulaire.
 
 ## Interface
 
@@ -32,47 +32,87 @@ Exécutable de **11KB** avec interface graphique complète et système de préf�
 └─────────────────────────────────────────────────────┘
 ```
 
-## Nouveautés version 1.0
+## 🏗️ Architecture Modulaire
 
-✅ **Affichage tabulaire** : Nom à gauche, taille/type à droite  
-✅ **Bouton Settings** : Fenêtre de paramètres avec préférences  
-✅ **Bouton Quit** : Sortie avec confirmation  
-✅ **Fichier de préférences** : `FileMaster.prefs` sauvegardé automatiquement  
-✅ **Formatage des tailles** : bytes/KB/MB selon la taille  
+Le projet utilise une architecture modulaire propre :
 
-## Fichiers
-
-- `main.c` - Code source principal (~15KB)
-- `build.ps1` - Script de build PowerShell automatique
-- `filemaster.exe` - Exécutable Windows (11264 octets)
-- `FileMaster.prefs` - Préférences utilisateur (créé automatiquement)
-- `FONCTIONNALITES.md` - Documentation détaillée
-- `CHANGELOG.md` - Nouveautés version 1.0
-
-## Compilation
-
-### Automatique (recommandé)
-```powershell
-.\build.ps1           # Compile et lance
-.\build.ps1 build     # Compile seulement
-.\build.ps1 run       # Lance l'application
-.\build.ps1 analyze   # Analyse détaillée
-.\build.ps1 clean     # Nettoie
+```
+├── main.c          # Core application (1528 lignes)
+├── rename.c        # Fonctions de renommage (126 lignes)
+├── mkdir.c         # Création de dossiers (87 lignes)
+├── conflict.c      # Résolution de conflits (148 lignes)
+├── viewers.c       # Visualiseurs/éditeurs (343 lignes)
+├── fileops.c       # Opérations fichiers (151 lignes)
+├── prototypes.h    # Déclarations centralisées (40+ fonctions)
+└── Makefile        # Système de build modulaire
 ```
 
-### Manuelle
+### Modules Fonctionnels
+
+✅ **`rename.c`** - Gestion des renommages de fichiers/dossiers  
+✅ **`mkdir.c`** - Interface de création de nouveaux dossiers  
+✅ **`conflict.c`** - Résolution des conflits lors d'opérations  
+✅ **`viewers.c`** - Visualiseurs ASCII/HEX et éditeurs  
+✅ **`fileops.c`** - Opérations de base sur les fichiers  
+
+## 🛠️ Compilation
+
+### Build Modulaire (par défaut)
 ```bash
-gcc -o filemaster.exe main.c -luser32 -lkernel32 -lshell32 -Os -s -nostdlib -mwindows
+mingw32-make              # Build de release modulaire
+mingw32-make debug        # Build de debug modulaire
+mingw32-make clean        # Nettoyer
+mingw32-make help         # Aide
 ```
 
-## Caractéristiques
+### Optimisations
+- **Taille finale** : 48KB (architecture modulaire)
+- **Flags** : `-Oz -s -fno-unwind-tables`
+- **Modules** : Compilation séparée et linkage optimisé
 
-- **Taille** : 11264 octets (~11KB)
-- **Dépendances** : 3 DLL Windows (KERNEL32.dll, USER32.dll, SHELL32.dll)
-- **Interface** : Double panneau + 14 boutons + 2 boutons système
-- **Préférences** : Sauvegarde automatique des paramètres
-- **Type** : Application GUI Windows native
-- **Langage** : C pur (pas de runtime C++)
+## 📋 Fonctionnalités
+
+### Navigation & Interface
+- **Double panneau** avec navigation indépendante
+- **Sélection multiple** avec Ctrl+clic
+- **Formatage intelligent** des tailles (bytes/KB/MB)
+- **Gestion des conflits** avec options "Appliquer à tous"
+
+### Raccourcis Clavier
+- **F5** - Copier | **F6** - Déplacer | **F7** - Nouveau dossier | **F8** - Supprimer
+- **F3** - Visualiseur ASCII | **F4** - Éditeur ASCII | **F9** - Renommer
+- **Shift+F3** - Visualiseur HEX | **Shift+F4** - Éditeur HEX
+
+### Modules Intégrés
+- **Visualiseurs** ASCII/HEX avec scroll et recherche
+- **Éditeurs** ASCII/HEX avec sauvegarde
+- **Gestionnaire de conflits** intelligent
+- **Système de préférences** persistant
+
+## 📦 Fichiers du Projet
+
+```
+FileMaster/
+├── main.c              # Core application (1528 lignes)
+├── rename.c            # Module renommage (126 lignes)
+├── mkdir.c             # Module création dossiers (87 lignes)
+├── conflict.c          # Module résolution conflits (148 lignes)
+├── viewers.c           # Module visualiseurs/éditeurs (343 lignes)
+├── fileops.c           # Module opérations fichiers (151 lignes)
+├── prototypes.h        # Déclarations centralisées
+├── Makefile            # Système de build modulaire
+├── filemaster.rc       # Ressources Windows
+├── filemaster.manifest # Manifeste d'application
+├── version.h           # Informations de version
+└── FileMaster.exe      # Exécutable final (48KB)
+```
+
+## 🏆 Performances
+
+- **Taille** : 48KB (architecture modulaire optimisée)
+- **Startup** : Instantané (<100ms)
+- **Mémoire** : Empreinte minimale
+- **Compilation** : <2 secondes pour build complet
 
 ## Fonctionnalités implémentées
 
