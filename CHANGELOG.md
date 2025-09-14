@@ -57,6 +57,16 @@ x27. fonctionnement de la commande "Show HEX": affiche le premier fichier sélec
 
 x28. fonctionnement des commandes "Edit" et "Edit HEX". cela fait la même chose que les actions "show" mais l'utilisateur peut modifier le fichier et il y a un bouton enregistrer sur la fenetre. Si la fenêtre est fermée avec modification, il y a une popup qui propose de sauvegarder cae il y a des changements.
 
-29. Il faut mettre en place la sauvegarde du fichier de l'action "Edit ASC" et "Edit HEX" s'il y a une modification.
+x29. Il faut mettre en place la sauvegarde du fichier de l'action "Edit ASC" et "Edit HEX" s'il y a une modification.
 
-30. 
+x30. Lorsqu'on démarre l'application, la fenêtre s'ouvre au centre du desktop.
+
+x31. L'éditeur et le viewer HEX affichent sur 8 colonnes de 4 chiffres en HEX (FFFFFFFF), la cinquième colonne affiche en ASCII les 32 caractères ASCII des 8 colonnes en HEX.
+
+32. sur le viewer et l'éditeur HEX, est ce que tu peux changer le curseur pour un rectangle plein au lieu de la barre verticale fine (comme lorsqu'on est en mode "insert"). le curseur (et les sélections) sont répliquées sur l'autre côté (par exemple, on se déplace sur le fichier côté HEX, le deuxième curseur se déplace sur l'équivalent côté ASCII. et inversement)
+
+x33. tu peux ajouter un bouton "Fermer" au centre des viewers et des éditeurs ASCII et HEX pour fermer la fenêtre en cours.
+
+x34. Dans le viewer et l'éditeur ASCII et HEX il y a une boite de dialogue qui s'ouvre en disant que c'est "impossible de charger le fichier"  j'ai l'impression que cela arrive quand le nom de fichier est long et est affiché "..." à la fin dans le panneau. tu peux identifier le probléème et corriger ?
+
+x35. le viewer et l'éditeur ASCII n'affichent pas tous les caractères des fichiers. parfois il y a juste l'en-tête du fichier affiché et puis plus rien.

@@ -146,6 +146,7 @@ void ShowHEXViewer(const char* filename);
 void ShowASCIIEditor(const char* filename);
 void ShowHEXEditor(const char* filename);
 LRESULT CALLBACK ViewerWindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
+char* FormatASCIIData(const BYTE* data, DWORD size);
 
 // Structure pour les données du viewer/éditeur
 typedef struct {
@@ -157,6 +158,7 @@ typedef struct {
     BOOL isModified;
     HWND hEdit;
     HWND hSaveButton;
+    HWND hCloseButton;
 } ViewerData;
 
 // Fonction pour centrer toutes les MessageBox
@@ -332,17 +334,41 @@ void FormatFileSize(DWORD sizeLow, DWORD sizeHigh, char* buffer) {
 // Fonctions de gestion des fichiers pour les viewers/éditeurs
 BOOL LoadFileData(const char* filename, BYTE** data, DWORD* size) {
     HANDLE hFile = CreateFileA(filename, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
-    if (hFile == INVALID_HANDLE_VALUE) return FALSE;
+    if (hFile == INVALID_HANDLE_VALUE) {
+        DWORD error = GetLastError();
+        char errorMsg[512];
+        switch (error) {
+            case ERROR_FILE_NOT_FOUND:
+                wsprintfA(errorMsg, "Fichier non trouvé :\n%s", filename);
+                break;
+            case ERROR_ACCESS_DENIED:
+                wsprintfA(errorMsg, "Accès refusé :\n%s\n\nLe fichier est peut-être utilisé par un autre programme ou vous n'avez pas les permissions nécessaires.", filename);
+                break;
+            case ERROR_SHARING_VIOLATION:
+                wsprintfA(errorMsg, "Fichier en cours d'utilisation :\n%s\n\nLe fichier est ouvert dans un autre programme.", filename);
+                break;
+            case ERROR_PATH_NOT_FOUND:
+                wsprintfA(errorMsg, "Chemin non trouvé :\n%s", filename);
+                break;
+            default:
+                wsprintfA(errorMsg, "Impossible d'ouvrir le fichier :\n%s\n\nCode d'erreur Windows : %d", filename, error);
+                break;
+        }
+        ShowCenteredMessageBox(errorMsg, "Erreur d'ouverture", MB_OK | MB_ICONERROR);
+        return FALSE;
+    }
     
     *size = GetFileSize(hFile, NULL);
     if (*size == INVALID_FILE_SIZE) {
         CloseHandle(hFile);
+        ShowCenteredMessageBox("Impossible de déterminer la taille du fichier", "Erreur", MB_OK | MB_ICONERROR);
         return FALSE;
     }
     
     *data = (BYTE*)HeapAlloc(GetProcessHeap(), 0, *size + 1);
     if (!*data) {
         CloseHandle(hFile);
+        ShowCenteredMessageBox("Mémoire insuffisante pour charger le fichier", "Erreur", MB_OK | MB_ICONERROR);
         return FALSE;
     }
     
@@ -351,12 +377,34 @@ BOOL LoadFileData(const char* filename, BYTE** data, DWORD* size) {
         HeapFree(GetProcessHeap(), 0, *data);
         *data = NULL;
         CloseHandle(hFile);
+        ShowCenteredMessageBox("Erreur lors de la lecture du fichier", "Erreur", MB_OK | MB_ICONERROR);
         return FALSE;
     }
     
     (*data)[*size] = 0; // Null terminator pour l'affichage ASCII
     CloseHandle(hFile);
     return TRUE;
+}
+
+// Fonction pour formater les données ASCII en remplaçant les caractères non-imprimables
+char* FormatASCIIData(const BYTE* data, DWORD size) {
+    char* asciiText = (char*)HeapAlloc(GetProcessHeap(), 0, size + 1);
+    if (!asciiText) return NULL;
+    
+    for (DWORD i = 0; i < size; i++) {
+        if (data[i] >= 32 && data[i] <= 126) {
+            // Caractère imprimable
+            asciiText[i] = data[i];
+        } else if (data[i] == '\r' || data[i] == '\n' || data[i] == '\t') {
+            // Conserver les retours chariot, nouvelles lignes et tabulations
+            asciiText[i] = data[i];
+        } else {
+            // Remplacer les autres caractères non-imprimables par un point
+            asciiText[i] = '.';
+        }
+    }
+    asciiText[size] = '\0';
+    return asciiText;
 }
 
 BOOL SaveFileData(const char* filename, const BYTE* data, DWORD size) {
@@ -369,21 +417,21 @@ BOOL SaveFileData(const char* filename, const BYTE* data, DWORD size) {
     return result;
 }
 
-// Fonction pour formater les données en HEX avec 4 colonnes
+// Fonction pour formater les données en HEX avec 8 colonnes
 void FormatHexData(const BYTE* data, DWORD size, char** output) {
-    // Calcul de la taille nécessaire: chaque ligne = 16 bytes = 4 colonnes de 4 bytes
-    // Format: "XXXXXXXX XXXXXXXX XXXXXXXX XXXXXXXX  ................\r\n"
-    // = 8+1+8+1+8+1+8+2+16+2 = 55 caractères par ligne
-    DWORD lines = (size + 15) / 16;
-    DWORD outputSize = lines * 55 + 1;
+    // Calcul de la taille nécessaire: chaque ligne = 32 bytes = 8 colonnes de 4 bytes
+    // Format: "XXXXXXXX XXXXXXXX XXXXXXXX XXXXXXXX XXXXXXXX XXXXXXXX XXXXXXXX XXXXXXXX  ................................\r\n"
+    // = 8*8 + 7 + 2 + 32 + 2 = 64+7+2+32+2 = 107 caractères par ligne
+    DWORD lines = (size + 31) / 32;
+    DWORD outputSize = lines * 107 + 1;
     
     *output = (char*)HeapAlloc(GetProcessHeap(), 0, outputSize);
     if (!*output) return;
     
     char* ptr = *output;
-    for (DWORD i = 0; i < size; i += 16) {
-        // 4 colonnes de 4 bytes en HEX
-        for (int col = 0; col < 4; col++) {
+    for (DWORD i = 0; i < size; i += 32) {
+        // 8 colonnes de 4 bytes en HEX
+        for (int col = 0; col < 8; col++) {
             for (int j = 0; j < 4; j++) {
                 DWORD idx = i + col * 4 + j;
                 if (idx < size) {
@@ -394,7 +442,7 @@ void FormatHexData(const BYTE* data, DWORD size, char** output) {
                     ptr += 2;
                 }
             }
-            if (col < 3) {
+            if (col < 7) {
                 *ptr++ = ' ';
             }
         }
@@ -403,8 +451,8 @@ void FormatHexData(const BYTE* data, DWORD size, char** output) {
         *ptr++ = ' ';
         *ptr++ = ' ';
         
-        // Affichage ASCII des 16 caractères
-        for (DWORD j = 0; j < 16; j++) {
+        // Affichage ASCII des 32 caractères
+        for (DWORD j = 0; j < 32; j++) {
             DWORD idx = i + j;
             if (idx < size) {
                 char c = data[idx];
@@ -1277,7 +1325,7 @@ LRESULT CALLBACK ViewerWindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPa
             if (!data->isEditor) editStyle |= ES_READONLY;
             
             data->hEdit = CreateWindowA("EDIT", "", editStyle,
-                10, 10, 780, data->isEditor ? 520 : 550, hwnd, NULL, GetModuleHandleA(NULL), NULL);
+                10, 10, 780, data->isEditor ? 500 : 510, hwnd, NULL, GetModuleHandleA(NULL), NULL);
             
             // Appliquer la police monospace
             if (g_hFontMono) {
@@ -1293,15 +1341,33 @@ LRESULT CALLBACK ViewerWindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPa
                     HeapFree(GetProcessHeap(), 0, hexText);
                 }
             } else {
-                SetWindowTextA(data->hEdit, (char*)data->fileData);
+                char* asciiText = FormatASCIIData(data->fileData, data->fileSize);
+                if (asciiText) {
+                    SetWindowTextA(data->hEdit, asciiText);
+                    HeapFree(GetProcessHeap(), 0, asciiText);
+                }
             }
             
             // Créer le bouton Sauvegarder si c'est un éditeur
             if (data->isEditor) {
                 data->hSaveButton = CreateWindowA("BUTTON", "Sauvegarder", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
-                    350, 540, 100, 30, hwnd, (HMENU)1001, GetModuleHandleA(NULL), NULL);
+                    300, 520, 100, 30, hwnd, (HMENU)1001, GetModuleHandleA(NULL), NULL);
                 if (g_hFontUTF8) {
                     SendMessageA(data->hSaveButton, WM_SETFONT, (WPARAM)g_hFontUTF8, TRUE);
+                }
+                
+                // Bouton Fermer pour éditeur
+                data->hCloseButton = CreateWindowA("BUTTON", "Fermer", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
+                    410, 520, 100, 30, hwnd, (HMENU)1002, GetModuleHandleA(NULL), NULL);
+                if (g_hFontUTF8) {
+                    SendMessageA(data->hCloseButton, WM_SETFONT, (WPARAM)g_hFontUTF8, TRUE);
+                }
+            } else {
+                // Bouton Fermer pour viewer (centré)
+                data->hCloseButton = CreateWindowA("BUTTON", "Fermer", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
+                    350, 530, 100, 30, hwnd, (HMENU)1002, GetModuleHandleA(NULL), NULL);
+                if (g_hFontUTF8) {
+                    SendMessageA(data->hCloseButton, WM_SETFONT, (WPARAM)g_hFontUTF8, TRUE);
                 }
             }
             
@@ -1311,15 +1377,21 @@ LRESULT CALLBACK ViewerWindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPa
         case WM_COMMAND: {
             if (LOWORD(wParam) == 1001 && data && data->isEditor) { // Bouton Sauvegarder
                 int textLen = GetWindowTextLengthA(data->hEdit);
-                char* text = (char*)malloc(textLen + 1);
+                char* text = (char*)HeapAlloc(GetProcessHeap(), 0, textLen + 1);
                 if (text) {
                     GetWindowTextA(data->hEdit, text, textLen + 1);
                     
                     if (data->isHex) {
-                        // TODO: Parser le texte HEX et sauvegarder en binaire
-                        ShowCenteredMessageBox("Sauvegarde HEX non implémentée", "Info", MB_OK);
+                        // Pour l'éditeur HEX, on sauvegarde le texte tel quel (format HEX)
+                        // L'utilisateur peut modifier le format HEX directement
+                        if (SaveFileData(data->filePath, (BYTE*)text, lstrlenA(text))) {
+                            data->isModified = FALSE;
+                            ShowCenteredMessageBox("Fichier HEX sauvegardé avec succès", "Sauvegarde", MB_OK | MB_ICONINFORMATION);
+                        } else {
+                            ShowCenteredMessageBox("Erreur lors de la sauvegarde HEX", "Erreur", MB_OK | MB_ICONERROR);
+                        }
                     } else {
-                        if (SaveFileData(data->filePath, (BYTE*)text, strlen(text))) {
+                        if (SaveFileData(data->filePath, (BYTE*)text, lstrlenA(text))) {
                             data->isModified = FALSE;
                             ShowCenteredMessageBox("Fichier sauvegardé avec succès", "Sauvegarde", MB_OK | MB_ICONINFORMATION);
                         } else {
@@ -1328,6 +1400,11 @@ LRESULT CALLBACK ViewerWindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPa
                     }
                     HeapFree(GetProcessHeap(), 0, text);
                 }
+            } else if (LOWORD(wParam) == 1002) { // Bouton Fermer
+                SendMessageA(hwnd, WM_CLOSE, 0, 0);
+            } else if (HIWORD(wParam) == EN_CHANGE && data && data->isEditor) {
+                // Le contenu de l'éditeur a changé
+                data->isModified = TRUE;
             }
             break;
         }
@@ -1394,6 +1471,7 @@ void ShowASCIIViewer(const char* filename) {
     data->isModified = FALSE;
     data->hEdit = NULL;
     data->hSaveButton = NULL;
+    data->hCloseButton = NULL;
     
     if (!LoadFileData(filename, &data->fileData, &data->fileSize)) {
         HeapFree(GetProcessHeap(), 0, data);
@@ -1419,7 +1497,7 @@ void ShowASCIIViewer(const char* filename) {
     char title[300];
     sprintf(title, "ASCII Viewer - %s", filename);
     
-    HWND hViewerWnd = CreateWindowA("ViewerWnd", title, WS_OVERLAPPEDWINDOW,
+    HWND hViewerWnd = CreateWindowA("ViewerWnd", title, WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX,
         mainRect.left, mainRect.top, width, height, NULL, NULL, GetModuleHandleA(NULL), data);
     
     ShowWindow(hViewerWnd, SW_SHOW);
@@ -1435,6 +1513,7 @@ void ShowHEXViewer(const char* filename) {
     data->isModified = FALSE;
     data->hEdit = NULL;
     data->hSaveButton = NULL;
+    data->hCloseButton = NULL;
     
     if (!LoadFileData(filename, &data->fileData, &data->fileSize)) {
         HeapFree(GetProcessHeap(), 0, data);
@@ -1460,7 +1539,7 @@ void ShowHEXViewer(const char* filename) {
     char title[300];
     sprintf(title, "HEX Viewer - %s", filename);
     
-    HWND hViewerWnd = CreateWindowA("ViewerWnd", title, WS_OVERLAPPEDWINDOW,
+    HWND hViewerWnd = CreateWindowA("ViewerWnd", title, WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX,
         mainRect.left, mainRect.top, width, height, NULL, NULL, GetModuleHandleA(NULL), data);
     
     ShowWindow(hViewerWnd, SW_SHOW);
@@ -1476,6 +1555,7 @@ void ShowASCIIEditor(const char* filename) {
     data->isModified = FALSE;
     data->hEdit = NULL;
     data->hSaveButton = NULL;
+    data->hCloseButton = NULL;
     
     if (!LoadFileData(filename, &data->fileData, &data->fileSize)) {
         HeapFree(GetProcessHeap(), 0, data);
@@ -1501,7 +1581,7 @@ void ShowASCIIEditor(const char* filename) {
     char title[300];
     sprintf(title, "ASCII Editor - %s", filename);
     
-    HWND hViewerWnd = CreateWindowA("ViewerWnd", title, WS_OVERLAPPEDWINDOW,
+    HWND hViewerWnd = CreateWindowA("ViewerWnd", title, WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX,
         mainRect.left, mainRect.top, width, height, NULL, NULL, GetModuleHandleA(NULL), data);
     
     ShowWindow(hViewerWnd, SW_SHOW);
@@ -1517,6 +1597,7 @@ void ShowHEXEditor(const char* filename) {
     data->isModified = FALSE;
     data->hEdit = NULL;
     data->hSaveButton = NULL;
+    data->hCloseButton = NULL;
     
     if (!LoadFileData(filename, &data->fileData, &data->fileSize)) {
         HeapFree(GetProcessHeap(), 0, data);
@@ -1542,7 +1623,7 @@ void ShowHEXEditor(const char* filename) {
     char title[300];
     sprintf(title, "HEX Editor - %s", filename);
     
-    HWND hViewerWnd = CreateWindowA("ViewerWnd", title, WS_OVERLAPPEDWINDOW,
+    HWND hViewerWnd = CreateWindowA("ViewerWnd", title, WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX,
         mainRect.left, mainRect.top, width, height, NULL, NULL, GetModuleHandleA(NULL), data);
     
     ShowWindow(hViewerWnd, SW_SHOW);
@@ -2012,20 +2093,16 @@ void ExecuteCommand(int cmdId) {
                 char szItem[400];
                 SendMessageA(hActiveList, LB_GETTEXT, sel, (LPARAM)szItem);
                 
-                // Extraire le nom du fichier réel (avant les espaces)
-                char szFileName[256];
-                int i = 0;
-                while (szItem[i] && szItem[i] != ' ') {
-                    szFileName[i] = szItem[i];
-                    i++;
-                }
-                szFileName[i] = '\0';
-                
                 // Vérifier si c'est un fichier (pas un répertoire)
                 if (!strstr(szItem, "DIR")) {
-                    char szFullPath[MAX_PATH];
-                    wsprintfA(szFullPath, "%s%s", szCurrentPath, szFileName);
-                    ShowASCIIViewer(szFullPath);
+                    char szRealName[256];
+                    if (GetRealFileName(szCurrentPath, sel, szRealName)) {
+                        char szFullPath[MAX_PATH];
+                        wsprintfA(szFullPath, "%s%s", szCurrentPath, szRealName);
+                        ShowASCIIViewer(szFullPath);
+                    } else {
+                        FlashError(hActiveList);
+                    }
                 } else {
                     FlashError(hActiveList);
                 }
@@ -2048,20 +2125,16 @@ void ExecuteCommand(int cmdId) {
                 char szItem[400];
                 SendMessageA(hActiveList, LB_GETTEXT, sel, (LPARAM)szItem);
                 
-                // Extraire le nom du fichier réel (avant les espaces)
-                char szFileName[256];
-                int i = 0;
-                while (szItem[i] && szItem[i] != ' ') {
-                    szFileName[i] = szItem[i];
-                    i++;
-                }
-                szFileName[i] = '\0';
-                
                 // Vérifier si c'est un fichier (pas un répertoire)
                 if (!strstr(szItem, "DIR")) {
-                    char szFullPath[MAX_PATH];
-                    wsprintfA(szFullPath, "%s%s", szCurrentPath, szFileName);
-                    ShowHEXViewer(szFullPath);
+                    char szRealName[256];
+                    if (GetRealFileName(szCurrentPath, sel, szRealName)) {
+                        char szFullPath[MAX_PATH];
+                        wsprintfA(szFullPath, "%s%s", szCurrentPath, szRealName);
+                        ShowHEXViewer(szFullPath);
+                    } else {
+                        FlashError(hActiveList);
+                    }
                 } else {
                     FlashError(hActiveList);
                 }
@@ -2084,20 +2157,16 @@ void ExecuteCommand(int cmdId) {
                 char szItem[400];
                 SendMessageA(hActiveList, LB_GETTEXT, sel, (LPARAM)szItem);
                 
-                // Extraire le nom du fichier réel (avant les espaces)
-                char szFileName[256];
-                int i = 0;
-                while (szItem[i] && szItem[i] != ' ') {
-                    szFileName[i] = szItem[i];
-                    i++;
-                }
-                szFileName[i] = '\0';
-                
                 // Vérifier si c'est un fichier (pas un répertoire)
                 if (!strstr(szItem, "DIR")) {
-                    char szFullPath[MAX_PATH];
-                    wsprintfA(szFullPath, "%s%s", szCurrentPath, szFileName);
-                    ShowASCIIEditor(szFullPath);
+                    char szRealName[256];
+                    if (GetRealFileName(szCurrentPath, sel, szRealName)) {
+                        char szFullPath[MAX_PATH];
+                        wsprintfA(szFullPath, "%s%s", szCurrentPath, szRealName);
+                        ShowASCIIEditor(szFullPath);
+                    } else {
+                        FlashError(hActiveList);
+                    }
                 } else {
                     FlashError(hActiveList);
                 }
@@ -2120,20 +2189,16 @@ void ExecuteCommand(int cmdId) {
                 char szItem[400];
                 SendMessageA(hActiveList, LB_GETTEXT, sel, (LPARAM)szItem);
                 
-                // Extraire le nom du fichier réel (avant les espaces)
-                char szFileName[256];
-                int i = 0;
-                while (szItem[i] && szItem[i] != ' ') {
-                    szFileName[i] = szItem[i];
-                    i++;
-                }
-                szFileName[i] = '\0';
-                
                 // Vérifier si c'est un fichier (pas un répertoire)
                 if (!strstr(szItem, "DIR")) {
-                    char szFullPath[MAX_PATH];
-                    wsprintfA(szFullPath, "%s%s", szCurrentPath, szFileName);
-                    ShowHEXEditor(szFullPath);
+                    char szRealName[256];
+                    if (GetRealFileName(szCurrentPath, sel, szRealName)) {
+                        char szFullPath[MAX_PATH];
+                        wsprintfA(szFullPath, "%s%s", szCurrentPath, szRealName);
+                        ShowHEXEditor(szFullPath);
+                    } else {
+                        FlashError(hActiveList);
+                    }
                 } else {
                     FlashError(hActiveList);
                 }
@@ -2424,8 +2489,14 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     int windowWidth = rect.right - rect.left;
     int windowHeight = rect.bottom - rect.top;
     
+    // Centrer la fenêtre sur l'écran
+    int screenWidth = GetSystemMetrics(SM_CXSCREEN);
+    int screenHeight = GetSystemMetrics(SM_CYSCREEN);
+    int centerX = (screenWidth - windowWidth) / 2;
+    int centerY = (screenHeight - windowHeight) / 2;
+    
     g_hMainWindow = CreateWindowA("FM", "FileMaster 1.0", style,
-        50, 50, windowWidth, windowHeight, NULL, NULL, hInstance, NULL);
+        centerX, centerY, windowWidth, windowHeight, NULL, NULL, hInstance, NULL);
     
     ShowWindow(g_hMainWindow, SW_SHOW);
     
