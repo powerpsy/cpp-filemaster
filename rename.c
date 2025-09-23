@@ -88,7 +88,7 @@ LRESULT CALLBACK RenameDialogProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lP
 // =============================================================================
 BOOL ShowRenameDialog(const char* currentName, char* newName) {
     // Préparer le nom actuel
-    lstrcpyA(g_renameResult, currentName);
+    lstrcpynA(g_renameResult, currentName, MAX_PATH);
     g_renameConfirmed = FALSE;
     
     // Créer et afficher la boîte de dialogue modale

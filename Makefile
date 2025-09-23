@@ -14,7 +14,7 @@ CC = gcc
 WINDRES = windres
 
 # Cibles par défaut
-.PHONY: all clean debug release test run
+.PHONY: all clean debug release test run run-test
 
 all: release
 
@@ -50,10 +50,16 @@ run: $(TARGET)
 	@echo "=== Lancement de $(TARGET) ==="
 	./$(TARGET)
 
+# Lancement du test de vérification
+run-test:
+	@echo "=== Compilation et exécution du test de vérification ==="
+	$(CC) -o test_runner test.c
+	./test_runner
+
 # Nettoyage des fichiers générés
 clean:
 	@echo "=== Nettoyage ==="
-	-del /Q $(TARGET) FileMaster_debug.exe $(RC_OBJ) 2>nul
+	-del /Q $(TARGET) FileMaster_debug.exe $(RC_OBJ) test_runner 2>nul
 	@echo "✅ Fichiers nettoyés"
 
 # Affichage de l'aide
@@ -66,6 +72,7 @@ help:
 	@echo "  debug       - Build avec symboles de debug"
 	@echo "  test        - Compile et teste la création"
 	@echo "  run         - Compile et lance l'application"
+	@echo "  run-test    - Compile et lance le test de vérification"
 	@echo "  clean       - Supprime les fichiers générés"
 	@echo "  help        - Affiche cette aide"
 	@echo ""
